@@ -1,0 +1,8 @@
+
+<launch>
+
+	<node pkg="offboard_control" type="offboard_node" name="offboard" clear_params="true" output="screen">
+		<rosparam command="load" file="$(find offboard_control)/launch/custom_params.yaml" />
+	</node>
+
+</launch>

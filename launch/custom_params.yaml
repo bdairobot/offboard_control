@@ -1,0 +1,16 @@
+# use "rosservice call /mavros/param/pull" to see all parameters can be set
+# before flight, better backup the parameters in FCU, export into a file.param
+custom_param:
+  MC_YAWRATE_MAX: 5.0  #limitate the rotation speed
+  MPC_ACC_UP_MAX: 2.0 #maximu down acceleration in Vertical
+  MPC_ACC_DOWN_MAX: 2.0
+  MPC_ACC_HOR: 2.0  #acc in Horizontal
+  MPC_ACC_HOR_MAX: 4.0  #max acc in Horizontal
+  MPC_MAN_TILT_MAX: 20.0 #max tilt degree
+  MPC_XY_VEL_MAX: 1.0 # max velocity in Horizontal
+
+action_server_name: "move_base"
+
+reached_condition: 0.1 # the distance condition that reached one point
+near_line_distance: 0.2 # the distance that indeicate near the line between waypoints
+pub_frequency: 10.0 # the frequency of pubilsh set point

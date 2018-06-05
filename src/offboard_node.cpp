@@ -86,7 +86,7 @@ class OffboardControl
 
 public:
   OffboardControl();
-  ~OffboardControl() {};
+  ~OffboardControl() {}
   void spin();
   void cleanBeforeExit();
   void executeCB(const navigation_3d_msgs::PathNavigationGoalConstPtr&);

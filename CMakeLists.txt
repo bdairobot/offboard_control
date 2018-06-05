@@ -109,7 +109,7 @@ find_package(Eigen3)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
- INCLUDE_DIRS include
+# INCLUDE_DIRS include
  CATKIN_DEPENDS 
  actionlib
  actionlib_msgs
@@ -127,8 +127,8 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-include
-${EIGEN3_INCLUDE_DIRS}
+#include
+${EIGEN3_INCLUDE_DIR}
 ${catkin_INCLUDE_DIRS}
 )
 

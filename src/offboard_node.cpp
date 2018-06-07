@@ -283,9 +283,9 @@ bool OffboardControl::planner(const Pose &pre_wp, const Pose &current_wp)
   Eigen::Vector3d line_a(pre_wp.pose.position.x, pre_wp.pose.position.y, pre_wp.pose.position.z);
   Eigen::Vector3d line_b(current_wp.pose.position.x, current_wp.pose.position.y, current_wp.pose.position.z);
 
-  generated_pose = current_wp; /* default as current waypoint */
-
+  geometry_msgs::Point position_sp;
   if((sphere_c - line_b).norm() < reached_condition){
+    generated_pose = current_wp; /* default as current waypoint */
     return true;
   } else {
 
@@ -293,36 +293,38 @@ bool OffboardControl::planner(const Pose &pre_wp, const Pose &current_wp)
     /* normalized AB */
     Eigen::Vector3d ab_norm = line_b - line_a;
 
-    if (ab_norm.norm() < 0.01) {
-      return false;
-    }
-
-    ab_norm.normalize();
-    Eigen::Vector3d d = line_a + ab_norm * (sphere_c - line_a).dot(ab_norm);
-    float cd_len = (sphere_c - d).norm();
-
-    if (sphere_r > cd_len) {
-      /* we have triangle CDX with known CD and CX = R, find DX */
-      float dx_len = sqrtf(sphere_r * sphere_r - cd_len * cd_len);
-
-      if ((sphere_c - line_b).dot(ab_norm) > 0.0) {
-        /* target waypoint is already behind us */
-        res = line_b;
-      } else {
-        /* target is in front of us */
-        res = d + ab_norm * dx_len; // vector A->B on line
-      }
+    if (ab_norm.norm() < 0.01) { /* way points are two close */
+      res = sphere_c + ((line_b - sphere_c).normalized() * sphere_r);
     } else {
-      /* have no roots, return D */
-      res = d; /* go directly to line */
 
-      /* previous waypoint is still in front of us */
-      if ((sphere_c - line_a).dot(ab_norm) < 0.0) {
-        res = line_a;
-      }
-      /* target waypoint is already behind us */
-      if ((sphere_c - line_b).dot(ab_norm) > 0.0) {
-        res = line_b;
+      ab_norm.normalize();
+      Eigen::Vector3d d = line_a + ab_norm * (sphere_c - line_a).dot(ab_norm);
+      float cd_len = (sphere_c - d).norm();
+
+      if (sphere_r > cd_len) {
+        /* we have triangle CDX with known CD and CX = R, find DX */
+        float dx_len = sqrtf(sphere_r * sphere_r - cd_len * cd_len);
+          
+        if ((sphere_c - line_b).norm() < sphere_r) { /* target is near */
+          res = line_b;
+        } else if ((sphere_c - line_b).dot(ab_norm) > 0.0) {/* target waypoint is already behind us */
+          res = sphere_c + ((line_b - sphere_c).normalized() * sphere_r);
+        } else {
+          /* target is in front of us */
+          res = d + ab_norm * dx_len; // vector A->B on line
+        }
+      } else {
+        /* have no roots, return D */
+        res = sphere_c + ((d - sphere_c).normalized() * sphere_r); /* go directly to line */
+
+        /* previous waypoint is still in front of us */
+        if ((sphere_c - line_a).dot(ab_norm) < 0.0) {
+          res = sphere_c + ((line_a - sphere_c).normalized() * sphere_r);
+        }
+        /* target waypoint is already behind us */
+        if ((sphere_c - line_b).dot(ab_norm) > 0.0) {
+          res = sphere_c + ((line_b - sphere_c).normalized() * sphere_r);
+        }
       }
     }
 

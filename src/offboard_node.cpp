@@ -353,12 +353,16 @@ void OffboardControl::setFCUParam(std::unordered_map<std::string, mavros_msgs::P
 void OffboardControl::stateCB(const mavros_msgs::State::ConstPtr& msg)
 {
   // update parameters when offboard mode switched in or out
-  if(current_state.mode != "OFFBOARD" && msg->mode == "OFFBOARD"){
+  if((current_state.mode != "OFFBOARD" && current_state.mode != "POSCTL") &&
+     (msg->mode == "OFFBOARD" || msg->mode == "POSCTL")) {
     setFCUParam(custom_parameters);
     custom_param_seted = true;
+    ROS_WARN("OFFBOARD: Set custom parameters into FCU.");
       
-  } else if(current_state.mode == "OFFBOARD" && msg->mode != "OFFBOARD") {
+  } else if((current_state.mode == "OFFBOARD" || current_state.mode == "POSCTL") &&
+    (msg->mode != "OFFBOARD" && msg->mode != "POSCTL")) {
     setFCUParam(origin_paramters_in_fcu);
+    ROS_WARN("OFFBOARD: Reset default parameters into FCU.");
     custom_param_seted = false;
   }
 

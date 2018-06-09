@@ -95,6 +95,7 @@ public:
   void spin();
   void cleanBeforeExit();
   void executeCB(const navigation_3d_msgs::PathNavigationGoalConstPtr&);
+  // void preemptCB(void);
 };
 
 OffboardControl::OffboardControl():
@@ -138,6 +139,8 @@ OffboardControl::OffboardControl():
 
   as_ = new actionlib::SimpleActionServer<navigation_3d_msgs::PathNavigationAction>
     (private_nh, action_server_name, boost::bind(&OffboardControl::executeCB, this, _1), false);
+
+  // as_->registerPreemptCallback(boost::bind(&OffboardControl::preemptCB, this));
 
   as_->start();
 }
@@ -227,10 +230,16 @@ void OffboardControl::executeCB(const navigation_3d_msgs::PathNavigationGoalCons
   current_wp.pose.orientation = generated_pose.pose.orientation;
 
   moving_state = MOVING_STATE::FOLLOW_INIT;
-  ros::Rate rate_generate_pose(20);
+  ros::Rate rate_generate_pose(30);
   ROS_INFO("OFFBOARD: Get new goal!");
   while (!ros::isShuttingDown()) {
-    
+    if (as_->isPreemptRequested()) {
+      as_->setPreempted();
+      ROS_INFO("OFFBOARD: %s preempt current goal", action_server_name.c_str());
+      moving_state = MOVING_STATE::PAUSE;
+      return;
+    }
+
     if (!current_state.armed) {
       moving_state = MOVING_STATE::INIT;
       ROS_INFO("OFFBOARD: Aborting this goal, because it is not disarmed.");
@@ -286,6 +295,13 @@ void OffboardControl::executeCB(const navigation_3d_msgs::PathNavigationGoalCons
   as_->setAborted(result, "Aborting on the goal because the node is shutting down");
   ROS_INFO("OFFBOARD: Aborting on the goal because the node is shutting down");
 }
+
+// void OffboardControl::preemptCB(void) 
+// {
+//     ROS_INFO("OFFBOARD: %s Preempted", action_server_name.c_str());
+//     // set the action state to preempted
+//     as_->setPreempted();
+// }
 
 bool OffboardControl::yaw_reached(geometry_msgs::Quaternion const &q_sp)
 {
@@ -436,7 +452,6 @@ void OffboardControl::pubTimerCB(const ros::TimerEvent& event)
 
   if (current_state.mode == "OFFBOARD" && !as_->isActive()){
     moving_state = MOVING_STATE::PAUSE;
-    ROS_INFO("not active!");
   }
 
   switch (moving_state) {

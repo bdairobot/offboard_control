@@ -1,0 +1,1 @@
+rostopic pub /mavros/desired_path offboard_control/Path "{waypoints:[{pose:[[0,0,5],[0,0,0,1]]},{pose:[[10,10,10],[0,0,1,0]]},{pose:[[10,0,10],[0,0,0,1]]}]}"

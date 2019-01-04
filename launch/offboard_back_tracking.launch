@@ -1,0 +1,11 @@
+
+<launch>
+	<include file="$(find mavros)/launch/px4_sim.launch" />
+	<node pkg="offboard_control" type="offboard_tracking" name="offboard_tracking" output="screen">
+		<rosparam command="load" file="$(find offboard_control)/launch/custom_params_tracking.yaml" />
+	</node>
+
+	<node pkg="offboard_control" type="backtracking_generator" name="backtracking_generator">
+	</node>
+
+</launch>

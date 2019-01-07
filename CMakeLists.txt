@@ -14,7 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation 
   std_msgs
   mavros_msgs
-  navigation_3d_msgs
+#  navigation_3d_msgs
   tf
 )
 # find_package(Eigen3)
@@ -164,12 +164,12 @@ ${catkin_INCLUDE_DIRS}
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-add_executable(offboard_node
-  src/offboard_node.cpp
-)
-target_link_libraries(offboard_node
-  ${catkin_LIBRARIES}
-)
+#add_executable(offboard_node
+#  src/offboard_node.cpp
+#)
+#target_link_libraries(offboard_node
+#  ${catkin_LIBRARIES}
+#)
 
 add_executable(offboard_tracking
   src/offboard_tracking.cpp

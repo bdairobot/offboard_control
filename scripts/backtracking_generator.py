@@ -19,7 +19,7 @@ class Generator(object):
     self.path = Path()
     self.record_flag = 0
     self.flag_channel = 6
-    self.min_distance = 0.5
+    self.min_distance = 1
     self.published = 0
   
   def rc_cb(self, msg):
@@ -35,6 +35,7 @@ class Generator(object):
       self.published = 0
       if not self.path.waypoints:
         self.path.waypoints.append(msg)
+	rospy.loginfo("OffboardGenerator: Start record position...")
       elif math.sqrt(math.pow(msg.pose.position.x-self.path.waypoints[-1].pose.position.x,2) + 
         math.pow(msg.pose.position.y-self.path.waypoints[-1].pose.position.y,2) + 
         math.pow(msg.pose.position.z-self.path.waypoints[-1].pose.position.z,2)) > self.min_distance:
@@ -42,6 +43,7 @@ class Generator(object):
 
     elif self.record_flag == 2:
       if len(self.path.waypoints) > 1 and not self.published:
+	self.path.waypoints.reverse()
         self.path_pub.publish(self.path)
         rospy.loginfo("Published path length: %d" % len(self.path.waypoints))
         self.published = 1

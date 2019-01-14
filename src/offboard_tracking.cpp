@@ -190,6 +190,9 @@ void OffboardControl::updateParamList()
   }
 
   ROS_INFO("OFFBOARD: Custom FCU parameters list loaded!");
+  ROS_INFO("OFFBOARD: Custom FCU parameters sent into FCU.");
+  setFCUParam(custom_parameters);
+  custom_param_seted = true;
 }
 
 void OffboardControl::cleanBeforeExit()
@@ -197,6 +200,7 @@ void OffboardControl::cleanBeforeExit()
   ROS_INFO("OFFBOARD: Cleanning OffboardControl ...");
   if (custom_param_seted){
     setFCUParam(origin_paramters_in_fcu);
+    ROS_INFO("OFFBOARD: Reseting original parameters.");
   }
 }
 
@@ -325,20 +329,11 @@ void OffboardControl::setFCUParam(std::unordered_map<std::string, mavros_msgs::P
 
 void OffboardControl::stateCB(const mavros_msgs::State::ConstPtr& msg)
 {
-  // update parameters when offboard mode switched in or out
-  // if((current_state.mode != "OFFBOARD" && current_state.mode != "POSCTL") &&
-  //    (msg->mode == "OFFBOARD" || msg->mode == "POSCTL")) {
   if((current_state.mode != "OFFBOARD") && (msg->mode == "OFFBOARD")) {
-    setFCUParam(custom_parameters);
-    custom_param_seted = true;
-    ROS_WARN("OFFBOARD: Set custom parameters into FCU.");
-      
-  // } else if((current_state.mode == "OFFBOARD" || current_state.mode == "POSCTL") &&
-  //   (msg->mode != "OFFBOARD" && msg->mode != "POSCTL")) {
+    set_pause_pose = false;
+    moving_state = MOVING_STATE::PAUSE;
   } else if((current_state.mode == "OFFBOARD") && (msg->mode != "OFFBOARD")) {
-    setFCUParam(origin_paramters_in_fcu);
-    ROS_WARN("OFFBOARD: Reset default parameters into FCU.");
-    custom_param_seted = false;
+    moving_state = MOVING_STATE::INIT;
   }
 
   current_state = *msg;
@@ -390,6 +385,7 @@ void OffboardControl::executeCB(const offboard_control::PathNavigationGoalConstP
     }
 
     ROS_DEBUG_STREAM("OFFBOARD: Following " << current_number <<"th waypoint...");
+
     moving_state = MOVING_STATE::FOLLOW_PATH;
     
     if (!posReached(goal->path[current_number]) || !yawReached(goal->path[current_number].pose.orientation)) {
@@ -419,7 +415,6 @@ void OffboardControl::pubTimerCB(const ros::TimerEvent& event)
 {
 
   if(!current_state.armed) moving_state = MOVING_STATE::INIT;
-  else moving_state = MOVING_STATE::PAUSE;
 
   switch (moving_state) {
 
@@ -427,6 +422,7 @@ void OffboardControl::pubTimerCB(const ros::TimerEvent& event)
       if (!set_pause_pose) {
         set_pose = local_pose;
         set_pause_pose = true;
+	ROS_INFO_STREAM("current pause position: " << set_pose.pose.position.x << set_pose.pose.position.y << set_pose.pose.position.z);
       }
       set_position_pub.publish(set_pose);
       break;

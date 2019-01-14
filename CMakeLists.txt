@@ -14,10 +14,10 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation 
   std_msgs
   mavros_msgs
-#  navigation_3d_msgs
+  navigation_3d_msgs
   tf
 )
-# find_package(Eigen3)
+find_package(Eigen3)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -53,31 +53,31 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-add_message_files(
-  FILES
+# add_message_files(
+#   FILES
 #   Message1.msg
 #   Message2.msg
-  Path.msg
-)
+# )
 
 ## Generate services in the 'srv' folder
-add_service_files(
-  FILES
+# add_service_files(
+#   FILES
 #   Service1.srv
 #   Service2.srv
-  CheckStillAlive.srv
-)
+# )
 
 ## Generate actions in the 'action' folder
-# add_action_files(
-#   FILES
-#   Action1.action
-#   Action2.action
-# )
+add_action_files(
+  FILES
+  # Action1.action
+  # Action2.action
+  PathNavigation.action
+)
 
 # Generate added messages and services with any dependencies listed here
 generate_messages(
   DEPENDENCIES
+  actionlib_msgs
   std_msgs  # Or other packages containing msgs
   geometry_msgs
 )
@@ -131,7 +131,7 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
 #include
-# ${EIGEN3_INCLUDE_DIR}
+${EIGEN3_INCLUDE_DIR}
 ${catkin_INCLUDE_DIRS}
 )
 
@@ -164,12 +164,12 @@ ${catkin_INCLUDE_DIRS}
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-#add_executable(offboard_node
-#  src/offboard_node.cpp
-#)
-#target_link_libraries(offboard_node
-#  ${catkin_LIBRARIES}
-#)
+add_executable(offboard_node
+ src/offboard_node.cpp
+)
+target_link_libraries(offboard_node
+ ${catkin_LIBRARIES}
+)
 
 add_executable(offboard_tracking
   src/offboard_tracking.cpp

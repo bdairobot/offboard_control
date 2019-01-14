@@ -18,19 +18,19 @@
 #include <mavros_msgs/ParamSet.h>
 #include <mavros_msgs/ParamGet.h>
 #include <mavros_msgs/ParamValue.h>
-#include <offboard_control/Path.h>
 
+#include <actionlib/server/simple_action_server.h>
+#include <offboard_control/PathNavigationAction.h>
 
 class OffboardControl 
 {
   typedef geometry_msgs::PoseStamped Pose;
   typedef geometry_msgs::TwistStamped Twist;
-  typedef offboard_control::Path Path;
   enum MOVING_STATE {
     INIT, // UAV still on the ground
     PAUSE, // UAV in Offboard mode but puse at current position
-    FOLLOW_POS,  // UAV follow set point position
-    FOLLOW_VEL, // UAV follow set point velocity
+    // FOLLOW_POS,  // UAV follow set point position
+    // FOLLOW_VEL, // UAV follow set point velocity
     FOLLOW_PATH  // UAV follow a given path
   } moving_state;
 
@@ -56,6 +56,11 @@ class OffboardControl
 
   bool custom_param_seted;  /* true if custom param has been set to FCU */
   bool set_pause_pose;
+
+  actionlib::SimpleActionServer<offboard_control::PathNavigationAction>* as_;
+  offboard_control::PathNavigationResult result;
+  offboard_control::PathNavigationFeedback feedback;
+  std::string action_server_name;
   
   double pub_frequency; /* frequency of set point publish to FCU */
   double reached_condition; /* the distance condition of reaching a set point */
@@ -66,11 +71,6 @@ class OffboardControl
   ros::Subscriber local_pose_sub;
   ros::Subscriber local_velocity_sub;
 
-  ros::Subscriber desired_velocity_sub;
-  ros::Subscriber desired_position_sub;
-  ros::Subscriber desired_path_sub;
-
-
   ros::Publisher set_position_pub;
   ros::Publisher set_velocity_pub;
 
@@ -78,7 +78,6 @@ class OffboardControl
   ros::ServiceClient set_mode_client;
   ros::ServiceClient set_param;
   ros::ServiceClient get_param;
-
 
   void stateCB(const mavros_msgs::State::ConstPtr&);
   void localPositionCB(const Pose::ConstPtr&);
@@ -88,12 +87,8 @@ class OffboardControl
   void pubTimerCB(const ros::TimerEvent&);
   geometry_msgs::Point pose_generate(const geometry_msgs::Point&, const geometry_msgs::Point&);
   bool isQuaternionValid(const geometry_msgs::Quaternion&);
-  bool yaw_reached(geometry_msgs::Quaternion const &);
-  bool yaw_reached(geometry_msgs::Point const&, geometry_msgs::Point const&, double &);
-
-  void desiredPosCB(const Pose::ConstPtr&);
-  void desiredVelCB(const Twist::ConstPtr&);
-  void desiredPathCB(const Path::ConstPtr&);
+  bool yawReached(geometry_msgs::Quaternion const &);
+  bool yawReached(geometry_msgs::Point const&, geometry_msgs::Point const&, double &);
   bool posReached(const Pose&);
 
 public:
@@ -101,7 +96,7 @@ public:
   ~OffboardControl() {}
   void spin();
   void cleanBeforeExit();
-
+  void executeCB(const offboard_control::PathNavigationGoalConstPtr&);
   // void preemptCB(void);
 };
 
@@ -112,7 +107,8 @@ OffboardControl::OffboardControl():
   rate_wait(1.0),
   rate_send(20.0),
   custom_param_seted(false),
-  set_pause_pose(false)
+  set_pause_pose(false),
+  as_(nullptr) 
 {
   
   state_sub = mavros_nh.subscribe<mavros_msgs::State> 
@@ -121,17 +117,9 @@ OffboardControl::OffboardControl():
     ("local_position/pose", 10, &OffboardControl::localPositionCB, this);
   local_velocity_sub = mavros_nh.subscribe<Twist> 
     ("local_position/velocity", 10, &OffboardControl::localVelocityCB, this);
-  desired_position_sub = mavros_nh.subscribe<Pose> 
-    ("desired_position", 10, &OffboardControl::desiredPosCB, this);
-  desired_velocity_sub = mavros_nh.subscribe<Twist>
-    ("desired_velocity", 10, &OffboardControl::desiredVelCB, this);
-  desired_path_sub = mavros_nh.subscribe<offboard_control::Path> 
-    ("desired_path", 10, &OffboardControl::desiredPathCB, this);
 
   set_position_pub = mavros_nh.advertise<Pose> 
     ("setpoint_position/local", 10);
-  set_velocity_pub = mavros_nh.advertise<Twist> 
-    ("setpoint_velocity/cmd_vel", 10);
 
   arming_client = mavros_nh.serviceClient<mavros_msgs::CommandBool> ("cmd/arming");
   set_mode_client = mavros_nh.serviceClient<mavros_msgs::SetMode> ("set_mode");
@@ -149,6 +137,12 @@ OffboardControl::OffboardControl():
   yaw_reached_condition /= 180.0/3.14;
   private_nh.param<double>("near_line_distance", sphere_r, 0.2);
   if (reached_condition > sphere_r) reached_condition = sphere_r; /* constrain reached condition */
+
+  private_nh.param<std::string>("action_server_name", action_server_name, "/move_base");
+  as_ = new actionlib::SimpleActionServer<offboard_control::PathNavigationAction>
+    (private_nh, action_server_name, boost::bind(&OffboardControl::executeCB, this, _1), false);
+  // as_->registerPreemptCallback(boost::bind(&OffboardControl::preemptCB, this));
+  as_->start();
 
 }
 
@@ -221,7 +215,7 @@ bool OffboardControl::posReached(const Pose& desired_pose)
 //     as_->setPreempted();
 // }
 
-bool OffboardControl::yaw_reached(geometry_msgs::Quaternion const &q_sp)
+bool OffboardControl::yawReached(geometry_msgs::Quaternion const &q_sp)
 {
   double yaw_current = tf::getYaw(local_pose.pose.orientation);
   double yaw_sp = tf::getYaw(q_sp);
@@ -300,18 +294,18 @@ bool OffboardControl::isQuaternionValid(const geometry_msgs::Quaternion& q)
     ROS_ERROR("Quaternion has length close to zero... discarding as navigation goal");
     return false;
   }
+  /* disable vertical check --bdai */
+  // //next, we'll normalize the quaternion and check that it transforms the vertical vector correctly
+  // tf_q.normalize();
 
-  //next, we'll normalize the quaternion and check that it transforms the vertical vector correctly
-  tf_q.normalize();
+  // tf::Vector3 up(0, 0, 1);
 
-  tf::Vector3 up(0, 0, 1);
+  // double dot = up.dot(up.rotate(tf_q.getAxis(), tf_q.getAngle()));
 
-  double dot = up.dot(up.rotate(tf_q.getAxis(), tf_q.getAngle()));
-
-  if(fabs(dot - 1) > 1e-3){
-    ROS_ERROR("Quaternion is invalid... for navigation the z-axis of the quaternion must be close to vertical.");
-    return false;
-  }
+  // if(fabs(dot - 1) > 1e-3){
+  //   ROS_ERROR("Quaternion is invalid... for navigation the z-axis of the quaternion must be close to vertical.");
+  //   return false;
+  // }
 
   return true;
 }
@@ -360,66 +354,72 @@ void OffboardControl::localVelocityCB(const Twist::ConstPtr& msg)
   local_velocity = *msg;
 }
 
-void OffboardControl::desiredPosCB(const Pose::ConstPtr& msg)
+
+void OffboardControl::executeCB(const offboard_control::PathNavigationGoalConstPtr & goal)
 {
-  // check desired pose
-  if (!isQuaternionValid(msg->pose.orientation)){
+  ROS_INFO("OFFBOARD: Get a new goal!");  
+
+  if (goal->path.size() == 0){
+    set_pause_pose = false;
     moving_state = MOVING_STATE::PAUSE;
-    ROS_DEBUG_STREAM("Aborting, Error quaternion!");
+    ROS_WARN("OFFBOARD: Empty waypoint in path, please check desired path!");
+    as_->setAborted(result,"Empty waypoint in path, please check desired path!");
     return;
   }
-  set_pose = *msg;
-  ROS_DEBUG_STREAM("OFFBOARD: Go to desired position:" << set_pose);
-  moving_state = MOVING_STATE::FOLLOW_POS;
-}
-
-void OffboardControl::desiredVelCB(const Twist::ConstPtr& msg)
-{
-   set_vel = *msg;
-   ROS_DEBUG_STREAM("OFFBOARD: Following a desired velocity:" << set_vel);
-   moving_state = MOVING_STATE::FOLLOW_VEL;
-}
-
-void OffboardControl::desiredPathCB(const Path::ConstPtr& msg)
-{
   ros::Rate rate(10);
-  ROS_INFO_STREAM("OFFBOARD: Following a desired path!");
-  if (msg->waypoints.size() < 2){
-    moving_state = MOVING_STATE::PAUSE;
-    ROS_WARN_STREAM("OFFBOARD: Invalid waypoint number, must bigger than 2, please check desired path!");
-    return;
-  }
+  int current_number = 0;
 
-  for(uint64_t i = 0; i< msg->waypoints.size();){
-    if (!isQuaternionValid(msg->waypoints[i].pose.orientation)){
+  while (!ros::isShuttingDown()) {
+    if (as_->isPreemptRequested()) {
+      as_->setPreempted();
+      ROS_DEBUG_STREAM("OFFBOARD: %s preempt current goal" << action_server_name.c_str());
+      set_pause_pose = false;
       moving_state = MOVING_STATE::PAUSE;
-      ROS_WARN_STREAM("OFFBOARD: Aborting, Error quaternion in " << i << "th waypoint!");
       return;
     }
-    ROS_INFO_STREAM("OFFBOARD: Following " << i <<"th waypoint...");
-    moving_state = MOVING_STATE::FOLLOW_PATH;
-    if (i == 0 ){ // the first waypoint
-      set_pose = msg->waypoints[0];
-      while (!posReached(msg->waypoints[0]) && ros::ok()) {rate.sleep();}
-    } else {
-      while (!posReached(msg->waypoints[i]) && ros::ok()) {
-        set_pose.pose.orientation = msg->waypoints[i-1].pose.orientation;
-        set_pose.pose.position = pose_generate(msg->waypoints[i-1].pose.position, msg->waypoints[i].pose.position);
-        rate.sleep();
-      }
-      // position reached, set orientation as i th waypoint's
-      set_pose.pose.orientation = msg->waypoints[i].pose.orientation;
+
+    feedback.current_pose = local_pose;
+    as_->publishFeedback(feedback);
+
+    if (!isQuaternionValid(goal->path[current_number].pose.orientation)){
+      set_pause_pose = false;
+      moving_state = MOVING_STATE::PAUSE;
+      as_->setAborted(result,"Aborting, Error quaternion waypoint!");
+      ROS_WARN_STREAM("OFFBOARD: Aborting, Error quaternion in " << current_number << "th waypoint!");
+      return;
     }
-    i++;
+
+    ROS_DEBUG_STREAM("OFFBOARD: Following " << current_number <<"th waypoint...");
+    moving_state = MOVING_STATE::FOLLOW_PATH;
+    
+    if (!posReached(goal->path[current_number]) || !yawReached(goal->path[current_number].pose.orientation)) {
+      if (current_number == 0 ){ // the first waypoint
+        set_pose = goal->path[current_number];
+      } else {
+        set_pose.pose.orientation = goal->path[current_number].pose.orientation;
+        set_pose.pose.position = pose_generate(goal->path[current_number-1].pose.position,goal->path[current_number].pose.position);
+      }
+    } else {
+      current_number++;
+    }
+
+    if(current_number == goal->path.size()){
+      // position reached, set orientation as last waypoint's
+      as_->setSucceeded(result, "Finish goal, loiting in last waypoint");
+      ROS_INFO("OFFBOARD: Finish goal");
+      return;
+    }
+    rate.sleep();
   }
-  ROS_INFO_STREAM("OFFBOARD: Path finished!");
-  moving_state = MOVING_STATE::PAUSE;
+  as_->setAborted(result, "Aborting on the goal because the node is shutting down");
+  ROS_INFO("OFFBOARD: Aborting on the goal because the node is shutting down");
 }
 
 void OffboardControl::pubTimerCB(const ros::TimerEvent& event)
 {
 
   if(!current_state.armed) moving_state = MOVING_STATE::INIT;
+  else moving_state = MOVING_STATE::PAUSE;
 
   switch (moving_state) {
 
@@ -431,9 +431,9 @@ void OffboardControl::pubTimerCB(const ros::TimerEvent& event)
       set_position_pub.publish(set_pose);
       break;
 
-    case MOVING_STATE::FOLLOW_POS:
-      set_position_pub.publish(set_pose);
-      break;
+    // case MOVING_STATE::FOLLOW_POS:
+    //   set_position_pub.publish(set_pose);
+    //   break;
 
     case MOVING_STATE::INIT:
     default: 
@@ -441,9 +441,9 @@ void OffboardControl::pubTimerCB(const ros::TimerEvent& event)
       set_position_pub.publish(set_pose);
       break;
 
-    case MOVING_STATE::FOLLOW_VEL:
-      set_velocity_pub.publish(set_vel);
-      break;
+    // case MOVING_STATE::FOLLOW_VEL:
+    //   set_velocity_pub.publish(set_vel);
+    //   break;
 
     case MOVING_STATE::FOLLOW_PATH:
       set_position_pub.publish(set_pose);
@@ -493,7 +493,7 @@ static void sigintHandle(int sig)
 int main(int argc, char **argv)
 {
   /* code */
-  ros::init(argc, argv, "offboard_backtracking", ros::init_options::NoSigintHandler);
+  ros::init(argc, argv, "offboard_tracking", ros::init_options::NoSigintHandler);
 
   signal(SIGINT, sigintHandle);
 

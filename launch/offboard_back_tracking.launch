@@ -1,13 +1,16 @@
 
 <launch>
 	<include file="$(find mavros)/launch/px4.launch">
-		<arg name="fcu_url" value="/dev/ttyTHS1:921600" />
+		<!-- <arg name="fcu_url" value="/dev/ttyTHS1:921600" /> -->
 	</include>
+	<arg name="action_server_name" value="/move_base" />
 	<node pkg="offboard_control" type="offboard_tracking" name="offboard_tracking" output="screen">
 		<rosparam command="load" file="$(find offboard_control)/launch/custom_params_tracking.yaml" />
+		<param name="action_server_name" value="$(arg action_server_name)" />
 	</node>
 
 	<node pkg="offboard_control" type="backtracking_generator.py" name="backtracking_generator" output="screen">
+		<param name="action_server_name" value="$(arg action_server_name)" />
 	</node>
 
 </launch>

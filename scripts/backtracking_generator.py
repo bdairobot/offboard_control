@@ -2,11 +2,13 @@
 
 import rospy
 from mavros_msgs.msg import RCIn
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Quaternion, PoseStamped
 
 import actionlib
 import offboard_control.msg
 import math
+import numpy
+import tf
 
 class Generator(object):
   def __init__(self):
@@ -34,14 +36,24 @@ class Generator(object):
     else: self.record_flag = 0
 
   def pose_cb(self, msg):
+    def rotate_q(q):
+      """
+      Rotation for 180 degrees
+      """
+      dq = tf.transformations.quaternion_from_euler(0, 0, math.radians(180))
+      new_q = tf.transformations.quaternion_multiply(dq,numpy.array([q.x,q.y,q.z,q.w]))
+      return Quaternion(new_q[3],new_q[0],new_q[1],new_q[2])
+
     if self.record_flag == 1:
       self.published = 0
       if not self.path:
+        msg.pose.orientation = rotate_q(msg.pose.orientation)
         self.path.append(msg)
         rospy.loginfo("OffboardGenerator: Start record position...")
       elif math.sqrt(math.pow(msg.pose.position.x-self.path[-1].pose.position.x,2) + 
         math.pow(msg.pose.position.y-self.path[-1].pose.position.y,2) + 
         math.pow(msg.pose.position.z-self.path[-1].pose.position.z,2)) > self.min_distance:
+        msg.pose.orientation = rotate_q(msg.pose.orientation)
         self.path.append(msg)
 
     elif self.record_flag == 2:
